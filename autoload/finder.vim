@@ -1,15 +1,28 @@
-let s:find_file_buf = ''
+let s:find_file_buf = 0
 let s:last_pattern = ''
+let s:last_win_num = -1
+
+function! s:IsFinderWindow(win_num)
+    let win_id = win_getid(a:win_num)
+    let bufnr = winbufnr(win_id)
+
+    return bufnr == s:find_file_buf
+endfunction
 
 " find appreciated window to open file
 function! s:SelectAppreciatedWindow()
-    let size = winnr('$')
-    let result = 0
-    for win_nr in range(size)
-        let win_id = win_getid(win_nr)
-        let bufnr = winbufnr(win_id)
+    if !s:IsFinderWindow(s:last_win_num)
+        return s:last_win_num
+    endif
 
-        if bufnr == s:find_file_buf
+    let result = -1
+    let size = winnr('$')
+    if size < 2
+        return result
+    endif
+
+    for win_nr in range(size)
+        if s:IsFinderWindow(win_nr)
             continue
         endif
 
@@ -17,17 +30,18 @@ function! s:SelectAppreciatedWindow()
         break
     endfor
 
-    if result == 0
-        echo "create new window"
-        let result = winnr()
-    endif
-
     return result
 endfunction
 
 function! finder#OpenFile()
     let filepath = getline('.')
     let win_num = s:SelectAppreciatedWindow()
+
+    if win_num == -1
+        execute 'top split'
+        let win_num = winnr()
+    endif
+
     execute win_num . 'wincmd w'
     execute 'edit ' . filepath
 
@@ -41,6 +55,7 @@ function! finder#HideResultWindow()
 endfunction
 
 function! s:DisplayResult(result)
+    let s:last_win_num = winnr()
     if s:find_file_buf
         let bufnr = s:find_file_buf
         execute 'buffer' bufnr
