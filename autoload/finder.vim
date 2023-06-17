@@ -25,16 +25,16 @@ function! s:SelectAppreciatedWindow()
     return result
 endfunction
 
-function! s:OpenFile()
+function! finder#OpenFile()
     let filepath = getline('.')
     let win_num = s:SelectAppreciatedWindow()
     execute win_num . 'wincmd w'
     execute 'edit ' . filepath
 
-    call s:HideResultWindow()
+    call finder#HideResultWindow()
 endfunction
 
-function! s:HideResultWindow()
+function! finder#HideResultWindow()
     execute 'bd ' . s:find_file_buf
     let s:find_file_buf = 0
     silent! execute ':setlocal laststatus=1'
@@ -53,9 +53,9 @@ function! s:DisplayResult(result)
         execute 'split'
         execute 'buffer' bufnr
 
-        nnoremap <buffer> <silent> <CR> :call s:OpenFile()<CR>
-        nnoremap <buffer> <silent> q :call s:HideResultWindow()<CR>
-        nnoremap <buffer> <silent> <ESC> :call s:HideResultWindow()<CR>
+        nnoremap <buffer> <silent> <CR> :call finder#OpenFile()<CR>
+        nnoremap <buffer> <silent> q :call finder#HideResultWindow()<CR>
+        nnoremap <buffer> <silent> <ESC> :call finder#HideResultWindow()<CR>
     endif
 
     let size = len(a:result)
