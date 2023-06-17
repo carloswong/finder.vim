@@ -50,7 +50,7 @@ function! s:DisplayResult(result)
         let bufnr = bufadd('#FindFile#')
         let s:find_file_buf = bufnr
         call setbufvar(bufnr, '&buftype', 'nofile')
-        execute 'split'
+        execute 'bo split'
         execute 'buffer' bufnr
 
         nnoremap <buffer> <silent> <CR> :call finder#OpenFile()<CR>
