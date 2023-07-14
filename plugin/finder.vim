@@ -1,7 +1,7 @@
-if exists('loaded_findfile')
+if exists('g:loaded_finder_vim')
     finish
 endif
 
-let loaded_findfile = 1
+let g:loaded_finder_vim = 1
 
 command! FindFile call finder#FindFile()

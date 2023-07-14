@@ -1,17 +1,18 @@
-let s:find_file_buf = 0
-let s:last_pattern = ''
+let s:finder_buf = 0
 let s:last_win_num = -1
+let s:finder_job = v:null
+let g:finder_last_pattern = ''
 
-function! s:IsFinderWindow(win_num)
+function! s:is_finder_window(win_num)
     let win_id = win_getid(a:win_num)
     let bufnr = winbufnr(win_id)
 
-    return bufnr == s:find_file_buf
+    return bufnr == s:finder_buf
 endfunction
 
 " find appreciated window to open file
-function! s:SelectAppreciatedWindow()
-    if !s:IsFinderWindow(s:last_win_num)
+function! s:select_appreciated_window()
+    if !s:is_finder_window(s:last_win_num)
         return s:last_win_num
     endif
 
@@ -22,7 +23,7 @@ function! s:SelectAppreciatedWindow()
     endif
 
     for win_nr in range(size)
-        if s:IsFinderWindow(win_nr)
+        if s:is_finder_window(win_nr)
             continue
         endif
 
@@ -30,79 +31,141 @@ function! s:SelectAppreciatedWindow()
         break
     endfor
 
+    if result == -1 || result == 0
+        execute 'top split'
+        let result = winnr()
+    endif
+
     return result
 endfunction
 
 function! finder#OpenFile()
-    let filepath = getline('.')
-    let win_num = s:SelectAppreciatedWindow()
-
-    if win_num == -1
-        execute 'top split'
-        let win_num = winnr()
-    endif
-
-    execute win_num . 'wincmd w'
-    execute 'edit ' . filepath
+    let line = getline('.')
+    let info = split(line)
 
     call finder#HideResultWindow()
+
+    let win_num = s:select_appreciated_window()
+    silent! execute win_num . 'wincmd w'
+    execute 'edit ' . info[1]
 endfunction
 
 function! finder#HideResultWindow()
-    execute 'bd ' . s:find_file_buf
-    let s:find_file_buf = 0
-    silent! execute ':setlocal laststatus=1'
+    if s:finder_job != v:null && job_status(s:finder_job) == 'run'
+        call job_stop(s:finder_job)
+        let s:finder_job = v:null
+    endif
+
+    execute 'bd' s:finder_buf
+    let s:finder_buf = 0
 endfunction
 
-function! s:DisplayResult(result)
+function! s:prepare_finder_buffer() 
     let s:last_win_num = winnr()
-    if s:find_file_buf
-        let bufnr = s:find_file_buf
-        execute 'buffer' bufnr
-        call setbufvar(bufnr, '&modifiable', 1)
+    if s:finder_buf != 0
+        let winnr = bufwinnr(s:finder_buf)
+        silent! execute winnr . 'wincmd w'
+        call setbufvar(s:finder_buf, '&modifiable', 1)
         silent execute '%delete'
     else
-        let bufnr = bufadd('#FindFile#')
-        let s:find_file_buf = bufnr
-        call setbufvar(bufnr, '&buftype', 'nofile')
-        execute 'bo split'
-        execute 'buffer' bufnr
+        botright split Finder
+        let s:finder_buf = bufnr()
+
+        redraw
+
+        setlocal buftype=nofile
+        setlocal bufhidden=hide
+        setlocal noswapfile
+        setlocal nobuflisted
+        setlocal nonu
+        setlocal nowrap
+
+        syntax match Comment "\t.*$"
 
         nnoremap <buffer> <silent> <CR> :call finder#OpenFile()<CR>
         nnoremap <buffer> <silent> q :call finder#HideResultWindow()<CR>
         nnoremap <buffer> <silent> <ESC> :call finder#HideResultWindow()<CR>
     endif
 
-    let size = len(a:result)
+    setlocal statusline=%#Pmenu#\ Search:\ %{g:finder_last_pattern}%=%l/%L
+endfunction
 
-    if !size
-        setlocal nonu
-        call setbufline(bufnr, 1, '--Not Result found--')
-    else
-        setlocal nu
-        for i in range(size)
-            call setbufline(bufnr, i+1, a:result[i])
-        endfor
-    endif 
+function! s:append_matched_result(filepath)
+    if empty(a:filepath)
+        return
+    endif
 
+    if s:finder_buf == 0
+        return
+    endif
+
+    let fname = fnamemodify(a:filepath, ":t")
+    let text = printf(" %-30s\t%s", fname , a:filepath)
     let lines = line('$')
-    silent! execute 'resize' lines > 10 ? 10 : lines
-    silent! execute ':setlocal laststatus=0'
-    call setbufvar(bufnr, '&modifiable', 0)
+    if getline(1) == ''
+        silent! call setbufline(s:finder_buf, 1, text)
+    else
+        silent! call appendbufline(s:finder_buf, lines, text)
+    endif
+endfunction
 
+function! s:after_display_result()
+    let lines = line('$')
+    if lines == 1 && getline(1) == ''
+        call setbufline(s:finder_buf, 1, '--Not result found--')
+    else
+        normal gg
+    endif
+
+    call setbufvar(s:finder_buf, '&modifiable', 0)
+    silent! execute 'resize' lines > 10 ? 10 : lines
+endfunction
+
+function! s:on_finder_job_output(job, message)
+    call s:append_matched_result(a:message)
+endfunction
+
+function! s:on_finder_job_stop(job, status)
+    call s:after_display_result()
 endfunction
 
 function! finder#FindFile()
+    let remain_pattern = ''
+    if s:finder_buf && bufwinnr(s:finder_buf) != -1
+        let remain_pattern = g:finder_last_pattern
+    endif
+
     call inputsave()
-    let pattern = input('FindFile> ', s:last_pattern)
+    let pattern = input('Find> ', remain_pattern)
     call inputrestore()
     
-    let s:last_pattern = pattern
+    let g:finder_last_pattern = pattern
     if !len(pattern)
         return
     endif
 
-    let command = 'fd  --strip-cwd-prefix -c never ' . pattern
-    let output = systemlist(command)
-    call s:DisplayResult(output)
+    let default_command = 'fd  --strip-cwd-prefix -c never -t f {PATTERN}' 
+    let g:finder_find_command = get(g:, 'finder_find_command', default_command)
+    let command = substitute(g:finder_find_command, '{PATTERN}' , pattern, '')
+
+    call s:prepare_finder_buffer()
+
+    if has('job')
+        " async mode
+        if s:finder_job != v:null
+            call job_stop(s:finder_job)
+        endif
+
+        let s:finder_job = job_start(command, {
+                    \"out_cb" : function("s:on_finder_job_output"),
+                    \"exit_cb": function("s:on_finder_job_stop")})
+    else
+        " sync mode
+        let output = systemlist(command)
+        for filepath in output
+            call s:append_matched_result(filepath)
+        endfor
+        call s:after_display_result()
+    endif
+
 endfunction
