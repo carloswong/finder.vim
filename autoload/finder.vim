@@ -40,17 +40,20 @@ function! s:select_appreciated_window()
 endfunction
 
 function! finder#OpenFile()
+    if s:finder_buf == 0
+        return
+    endif
     let line = getline('.')
     let info = split(line)
 
-    call finder#HideResultWindow()
+    call finder#HideFinderWindow()
 
     let win_num = s:select_appreciated_window()
     silent! execute win_num . 'wincmd w'
     execute 'edit ' . info[1]
 endfunction
 
-function! finder#HideResultWindow()
+function! finder#HideFinderWindow()
     if s:finder_job != v:null && job_status(s:finder_job) == 'run'
         call job_stop(s:finder_job)
         let s:finder_job = v:null
@@ -60,7 +63,7 @@ function! finder#HideResultWindow()
     let s:finder_buf = 0
 endfunction
 
-function! s:prepare_finder_buffer() 
+function! s:prepare_finder_window() 
     let s:last_win_num = winnr()
     if s:finder_buf != 0
         let winnr = bufwinnr(s:finder_buf)
@@ -83,11 +86,12 @@ function! s:prepare_finder_buffer()
         syntax match Comment "\t.*$"
 
         nnoremap <buffer> <silent> <CR> :call finder#OpenFile()<CR>
-        nnoremap <buffer> <silent> q :call finder#HideResultWindow()<CR>
-        nnoremap <buffer> <silent> <ESC> :call finder#HideResultWindow()<CR>
+        nnoremap <buffer> <silent> q :call finder#HideFinderWindow()<CR>
+        nnoremap <buffer> <silent> <ESC> :call finder#HideFinderWindow()<CR>
     endif
 
-    setlocal statusline=%#Pmenu#\ Search:\ %{g:finder_last_pattern}%=%l/%L
+    let g:finder_mode_subtitle = g:finder_mode == 'Files' ? ': ' . g:finder_last_pattern : ''
+    setlocal statusline=%#Pmenu#\ [%{g:finder_mode}]%{g:finder_mode_subtitle}%=%l/%L
 endfunction
 
 function! s:append_matched_result(filepath)
@@ -99,8 +103,13 @@ function! s:append_matched_result(filepath)
         return
     endif
 
-    let fname = fnamemodify(a:filepath, ":t")
-    let text = printf(" %-30s\t%s", fname , a:filepath)
+    if (a:filepath != '[No Name]')
+        let fname = fnamemodify(a:filepath, ":t")
+    else
+        let fname = a:filepath
+    endif
+
+    let text = printf(" %-30s\t%s", fname, a:filepath)
     let lines = line('$')
     if getline(1) == ''
         silent! call setbufline(s:finder_buf, 1, text)
@@ -110,6 +119,9 @@ function! s:append_matched_result(filepath)
 endfunction
 
 function! s:after_display_result()
+    if s:finder_buf == 0
+        return
+    endif
     let lines = line('$')
     if lines == 1 && getline(1) == ''
         call setbufline(s:finder_buf, 1, '--Not result found--')
@@ -148,7 +160,8 @@ function! finder#FindFile()
     let g:finder_find_command = get(g:, 'finder_find_command', default_command)
     let command = substitute(g:finder_find_command, '{PATTERN}' , pattern, '')
 
-    call s:prepare_finder_buffer()
+    let g:finder_mode = 'Files'
+    call s:prepare_finder_window()
 
     if has('job')
         " async mode
@@ -168,4 +181,31 @@ function! finder#FindFile()
         call s:after_display_result()
     endif
 
+endfunction
+
+function! s:filter_buffer(b)
+    if getbufvar(a:b, "&buflisted") == 0
+        return 0
+    endif 
+
+    let type = getbufvar(a:b, "&buftype")
+    if  type == 'quickfix' || type == 'terminal'
+        return 0
+    endif
+
+    return 1
+endfunction
+
+function! finder#PickBuffer()
+    let g:finder_mode = 'Buffers'
+    call s:prepare_finder_window()
+    let buffers = filter(range(1, bufnr('$')), 's:filter_buffer(v:val)')
+    for buf in buffers
+        let filepath = bufname(buf)
+        if empty(filepath)
+            let filepath = '[No name]'
+        endif
+        call s:append_matched_result(filepath)
+    endfor
+    call s:after_display_result()
 endfunction
