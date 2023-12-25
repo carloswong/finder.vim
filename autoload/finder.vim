@@ -74,16 +74,24 @@ function! finder#PickBuffer()
     call s:after_display_result()
 endfunction
 
-function! finder#OpenSelected()
+function! finder#OpenSelected(type)
     if s:finder_buf == 0
         return
     endif
 
     let line = getline('.')
-    call finder#HideFinderWindow()
+    "call finder#HideFinderWindow()
 
     let win_num = s:select_appreciated_window()
     silent! execute win_num . 'wincmd w'
+
+    if a:type == 1
+        " vertical split
+        vsplit
+    elseif a:type == 2
+        " horizontal split
+        split
+    endif
 
     let item = s:get_fname_or_bufnr(line)
     if g:finder_mode == 'Buffers'
@@ -145,6 +153,10 @@ function! finder#DeleteBuffer()
 endfunction
 
 function! finder#HideFinderWindow()
+    if s:finder_buf == 0
+        return
+    endif
+
     if s:finder_job != v:null && job_status(s:finder_job) == 'run'
         call job_stop(s:finder_job)
         let s:finder_job = v:null
@@ -215,7 +227,7 @@ function! s:prepare_finder_window()
         silent execute '%delete'
         silent execute 'resize 1'
     else
-        silent botright 1 split Finder
+        silent botright 1 split *Finder*
         let s:finder_buf = bufnr()
 
         redraw
@@ -229,10 +241,14 @@ function! s:prepare_finder_window()
 
         syntax match Comment "\t.*$"
 
-        nnoremap <buffer> <silent> <CR> :call finder#OpenSelected()<CR>
+        nnoremap <buffer> <silent> <CR> :call finder#OpenSelected(0)<CR>
+        nnoremap <buffer> <silent> v :call finder#OpenSelected(1)<CR>
+        nnoremap <buffer> <silent> s :call finder#OpenSelected(2)<CR>
         nnoremap <buffer> <silent> <ESC> :call finder#HideFinderWindow()<CR>
         nnoremap <buffer> <silent> q :call finder#HideFinderWindow()<CR>
         nnoremap <buffer> <silent> x :call finder#DeleteBuffer()<CR>
+
+        autocmd BufLeave \*Finder\* :call finder#HideFinderWindow()
     endif
 
     let g:finder_mode_subtitle = g:finder_mode == 'Files' ? ' ' . g:finder_last_pattern : ''
