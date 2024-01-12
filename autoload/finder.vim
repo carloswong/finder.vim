@@ -4,6 +4,7 @@ let s:finder_job = v:null
 let g:finder_last_pattern = ''
 
 let g:finder_window_height = get(g:, 'finder_window_height', 10)
+let g:finder_window_ignore_patterns = ['NERD_tree', '__Tagbar__']
 
 " public functions
 
@@ -55,6 +56,7 @@ function! finder#PickBuffer()
     call s:prepare_finder_window()
 
     let buffers = filter(range(1, bufnr('$')), 's:filter_buffer(v:val)')
+    let buffers = sort(buffers,'s:sort_buffer_by_lastused')
     for buf in buffers
         let filepath = bufname(buf)
         if empty(filepath)
@@ -74,16 +76,30 @@ function! finder#PickBuffer()
     call s:after_display_result()
 endfunction
 
-function! finder#OpenSelected()
+function! s:sort_buffer_by_lastused(b1, b2)
+    let buf1 = getbufinfo(a:b1)
+    let buf2 = getbufinfo(a:b2)
+    return buf1[0].lastused > buf2[0].lastused ? -1 : 1
+endfunction
+
+function! finder#OpenSelected(type)
     if s:finder_buf == 0
         return
     endif
 
     let line = getline('.')
-    call finder#HideFinderWindow()
+    "call finder#HideFinderWindow()
 
     let win_num = s:select_appreciated_window()
     silent! execute win_num . 'wincmd w'
+
+    if a:type == 1
+        " vertical split
+        vsplit
+    elseif a:type == 2
+        " horizontal split
+        split
+    endif
 
     let item = s:get_fname_or_bufnr(line)
     if g:finder_mode == 'Buffers'
@@ -145,6 +161,10 @@ function! finder#DeleteBuffer()
 endfunction
 
 function! finder#HideFinderWindow()
+    if s:finder_buf == 0
+        return
+    endif
+
     if s:finder_job != v:null && job_status(s:finder_job) == 'run'
         call job_stop(s:finder_job)
         let s:finder_job = v:null
@@ -163,9 +183,21 @@ function! s:is_finder_window(win_num)
     return bufnr == s:finder_buf
 endfunction
 
+function! s:is_ignore_window(win_num)
+    let bufname = bufname(winbufnr(a:win_num))
+    for pattern in g:finder_window_ignore_patterns
+        echom pattern
+        if s:starts_with(bufname, pattern)
+            return v:true
+        endif 
+    endfor
+
+    return v:false
+endfunction
+
 " find appreciated window to open file
 function! s:select_appreciated_window()
-    if !s:is_finder_window(s:last_win_num)
+    if !s:is_finder_window(s:last_win_num) && !s:is_ignore_window(s:last_win_num)
         return s:last_win_num
     endif
 
@@ -177,6 +209,10 @@ function! s:select_appreciated_window()
 
     for win_nr in range(size)
         if s:is_finder_window(win_nr)
+            continue
+        endif
+
+        if s:is_ignore_window(win_nr)
             continue
         endif
 
@@ -215,7 +251,7 @@ function! s:prepare_finder_window()
         silent execute '%delete'
         silent execute 'resize 1'
     else
-        silent botright 1 split Finder
+        silent botright 1 split *Finder*
         let s:finder_buf = bufnr()
 
         redraw
@@ -228,11 +264,16 @@ function! s:prepare_finder_window()
         setlocal nowrap
 
         syntax match Comment "\t.*$"
-
-        nnoremap <buffer> <silent> <CR> :call finder#OpenSelected()<CR>
+        
+        " keymap
+        nnoremap <buffer> <silent> <CR> :call finder#OpenSelected(0)<CR>
+        nnoremap <buffer> <silent> v :call finder#OpenSelected(1)<CR>
+        nnoremap <buffer> <silent> s :call finder#OpenSelected(2)<CR>
         nnoremap <buffer> <silent> <ESC> :call finder#HideFinderWindow()<CR>
         nnoremap <buffer> <silent> q :call finder#HideFinderWindow()<CR>
         nnoremap <buffer> <silent> x :call finder#DeleteBuffer()<CR>
+
+        autocmd BufLeave \*Finder\* :call finder#HideFinderWindow()
     endif
 
     let g:finder_mode_subtitle = g:finder_mode == 'Files' ? ' ' . g:finder_last_pattern : ''
@@ -308,4 +349,8 @@ function! s:formt_to_buf_nr(buf)
     else
         return bufnr(a:buf)
     endif
+endfunction
+
+function! s:starts_with(string, pattern)
+    return a:string[0:len(a:pattern)-1] ==# a:pattern
 endfunction
