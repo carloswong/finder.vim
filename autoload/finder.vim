@@ -186,7 +186,6 @@ endfunction
 function! s:is_ignore_window(win_num)
     let bufname = bufname(winbufnr(a:win_num))
     for pattern in g:finder_window_ignore_patterns
-        echom pattern
         if s:starts_with(bufname, pattern)
             return v:true
         endif 
