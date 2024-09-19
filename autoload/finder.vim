@@ -2,30 +2,37 @@ let s:finder_buf = 0
 let s:last_win_num = -1
 let s:finder_job = v:null
 let g:finder_last_pattern = ''
+let s:default_finder_find_command = 'fd --strip-cwd-prefix -c never -t f {PATTERN}' 
 
 let g:finder_window_height = get(g:, 'finder_window_height', 10)
 let g:finder_window_ignore_patterns = ['NERD_tree', '__Tagbar__']
 
 " public functions
 
-function! finder#FindFile()
-    let remain_pattern = ''
-    if s:finder_buf && bufwinnr(s:finder_buf) != -1
-        let remain_pattern = g:finder_last_pattern
+function! finder#FindFile(...)
+    let command = ""
+    " not args passed
+    if a:0 == 0 
+        let remain_pattern = ''
+        if s:finder_buf && bufwinnr(s:finder_buf) != -1
+            let remain_pattern = g:finder_last_pattern
+        endif
+
+        call inputsave()
+        let pattern = input('Find: ', remain_pattern)
+        call inputrestore()
+        
+        let g:finder_last_pattern = pattern
+        if !len(pattern)
+            return
+        endif
+
+        let g:finder_find_command = get(g:, 'finder_find_command', s:default_finder_find_command)
+        let command = substitute(g:finder_find_command, '{PATTERN}' , pattern, '')
+    else
+        let command = a:1
     endif
 
-    call inputsave()
-    let pattern = input('Find: ', remain_pattern)
-    call inputrestore()
-    
-    let g:finder_last_pattern = pattern
-    if !len(pattern)
-        return
-    endif
-
-    let default_command = 'fd  --strip-cwd-prefix -c never -t f {PATTERN}' 
-    let g:finder_find_command = get(g:, 'finder_find_command', default_command)
-    let command = substitute(g:finder_find_command, '{PATTERN}' , pattern, '')
     let keymap = #{
         \ Enter: 'finder#OpenFile(0)', 
         \ s: 'finder#OpenFile(1)',
