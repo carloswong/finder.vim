@@ -38,13 +38,13 @@ function! finder#FindFile(...)
         \ s: 'finder#OpenFile(1)',
         \ v: 'finder#OpenFile(2)'}
 
-    if has('job')
-        call finder#ShowFinderWindowAsync('Files', command, function("s:on_files_job_output"), keymap)
     "It seems has bug on neovim to receive job std_output, so async mode is
     "not working yet
+    "if has('job')
+    "    call finder#ShowFinderWindowAsync('Files', command, function("s:on_files_job_output"), keymap)
     "elseif has('nvim')
     "    call finder#ShowFinderWindowAsync('Files', command, function("s:on_files_job_output_nvim"), keymap)
-    else
+    "else
         let filelist = []
         let output = systemlist(command)
         for fpath in output
@@ -54,7 +54,7 @@ function! finder#FindFile(...)
 
         call finder#ShowFinderWindow('Files', filelist, keymap)
         call s:did_all_matched_result_added()
-    endif
+    "endif
 endfunction
 
 function! s:on_files_job_output(job, message)
@@ -248,7 +248,7 @@ function! s:open_selected(type, cmd)
     endif
 
     let item = s:get_fname_or_bufnr(line)
-    execute a:cmd . ' ' . item
+    execute a:cmd . ' ' . item 
 endfunction
 
 
@@ -330,7 +330,7 @@ function! s:get_fname_or_bufnr(line)
         return str2nr(buf)
     endif
 
-    let items = split(a:line)
+    let items = split(a:line, '\t')
     return items[1]
 
 endfunction
